@@ -4,12 +4,9 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from random import randint
 
-from waapi.client import WaapiClient, CannotConnectToWaapiException
-
 
 class BattleshipGame(GridLayout):
     SHIPS = [2, 3, 3, 4, 4, 5]
-    waapi_url = "ws://akm-wweb-01:8080/waapi"
 
     def __init__(self, **kwargs):
         super(BattleshipGame, self).__init__(**kwargs)
@@ -55,12 +52,6 @@ class BattleshipGame(GridLayout):
         
         self.player_missiles = set()
         self.opponent_missiles = set()
-
-        self.waapi = None
-        try:
-            self.waapi = WaapiClient()
-        except CannotConnectToWaapiException:
-            print("Could not connect to Waapi: Is Wwise running and Wwise Authoring API enabled?")
 
     def place_ships(self, board, ships):
         # Place multiple ships on the board
