@@ -1,11 +1,20 @@
+import ctypes
+import os
+
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from random import randint
 
 
+wwise = None
+game_instance = None
+
+
 class BattleshipGame(GridLayout):
+    WWISE_GAME_ID = 42
     SHIPS = [2, 3, 3, 4, 4, 5]
 
     def __init__(self, **kwargs):
@@ -15,6 +24,8 @@ class BattleshipGame(GridLayout):
         self.board_size = 10
         self.board_player = [[0] * self.board_size for _ in range(self.board_size)]  # 0 represents an empty cell
         self.board_opponent = [[0] * self.board_size for _ in range(self.board_size)]
+
+        self.buttons = []
 
         # Create labels for row and column headers
         self.add_widget(Label(text=''))
@@ -36,6 +47,7 @@ class BattleshipGame(GridLayout):
                 button.row = row - 1
                 button.col = col - 1
                 self.add_widget(button)
+                self.buttons.append(button)
 
         self.place_ships(self.board_player, BattleshipGame.SHIPS)
         self.place_ships(self.board_opponent, BattleshipGame.SHIPS)
@@ -75,8 +87,7 @@ class BattleshipGame(GridLayout):
 
     def cell_pressed(self, instance):
         row, col = instance.row, instance.col
-        if (row, col) in self.player_missiles:
-            return  # already hit this zone
+        self.disable_buttons(True)
 
         self.player_missiles.add((row, col))
         if self.board_opponent[row][col] == 1:
@@ -85,18 +96,17 @@ class BattleshipGame(GridLayout):
             self.opponent_ships.discard((row, col))
             print(f"opponent ships: {len(self.opponent_ships)}")
             if not self.opponent_ships:
-                # Player Won!!! (sound - win)
-                print("you win!")
+                self.produce_sound("win")
                 exit()
             else:
-                # (sound - player hit)
+                self.produce_sound("hit")
                 pass
         else:
             instance.text = 'O'  # Miss
             instance.background_color = (0, 255, 0, 1)
-            # (sound - player miss)
+            self.produce_sound("miss")
 
-        self.opponent_move()
+        Clock.schedule_once(callback_to_opponent, 0.15)
 
     def opponent_move(self):
         while True:
@@ -110,27 +120,61 @@ class BattleshipGame(GridLayout):
 
         if (row, col) in self.player_ships:
             self.player_ships.discard((row, col))
-            print('Computer hits!')
             if not self.player_ships:
-                # Computer Won!!! (sound - loss)
-                print("you lose!")
+                self.produce_sound("lose")
                 exit()
             else:
-                # Computer Won!!! (sound - computer hit)
+                self.produce_sound("hit")
                 pass
         else:
-            # computer miss
-            print('Computer misses!')
+            self.produce_sound("miss")
 
         if self.board_player[row][col] == 0:
             self.board_player[row][col] = 1  # Mark the move on the player's board
-        
 
+    def produce_sound(self, sound_name):
+        global wwise
+        print(sound_name)  # Show name to be played
+        wwise.AK_SE_PostEvent(sound_name, BattleshipGame.WWISE_GAME_ID)
+
+    def disable_buttons(self, disabled):
+        for button in self.buttons:
+            button.disabled = disabled
+
+    def __del__(self):
+        global wwise
+        wwise.AK_SE_Term()
 
 class BattleshipApp(App):
     def build(self):
-        return BattleshipGame()
+        global game_instance
+        Clock.schedule_interval(callback, 0)
+        game_instance = BattleshipGame()
+        return game_instance
+
+
+def load_dll():
+    global wwise
+    wwise = ctypes.cdll.LoadLibrary("lib/libAkSoundEngineDLL.so")
+
+
+def callback(dt):
+    wwise.AK_SE_Tick()
+
+
+def callback_to_opponent(dt):
+    global game_instance
+    game_instance.opponent_move()
+    game_instance.disable_buttons(False)
 
 
 if __name__ == '__main__':
+    remove_env = False
+    if not os.environ.get("WWISE_SOUNDBANK_DIR"):
+        remove_env = True
+        os.environ["WWISE_SOUNDBANK_DIR"] = os.getcwd() + "/data/soundbanks"
+    load_dll()
+    wwise.AK_SE_Init()
     BattleshipApp().run()
+    if remove_env:
+        del os.environ["WWISE_SOUNDBANK_DIR"]
